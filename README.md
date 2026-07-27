@@ -62,6 +62,7 @@ Then finish signing in on the Portal.
 - Settings screen to control slideshow settings, weather, etc.
 - Swipe down from top to get the top bar when screensaver is active.
 - Tap to dismiss screensaver (configurable).
+- To keep adding photos easily, create a dedicated album in Google Photos and add the photos you want to use on your portal screensaver to that album. In the picker, search for the album name (it can take up to 24 hours after album creation to show up in picker search) and select all to add photos. As you keep adding more photos over time, simply keep selecting all and adding them - only the new photos will be downloaded.
 
 ---
 
