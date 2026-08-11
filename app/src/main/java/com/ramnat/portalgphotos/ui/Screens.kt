@@ -62,6 +62,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -103,6 +104,8 @@ import com.ramnat.portalgphotos.data.BackgroundStyle
 import com.ramnat.portalgphotos.data.SlideEffect
 import com.ramnat.portalgphotos.data.WeatherNow
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -394,23 +397,36 @@ private fun SlideshowScreen(
 
     val interactive = overlay == Overlay.NONE
 
+    // pointerInput only restarts when its key changes, and Compose deliberately ignores the
+    // lambda when diffing — so anything captured by value in the block freezes at the value it
+    // had when the block last started. Keying on items.size made that a real bug: deleting
+    // photos while the Manage overlay was open re-started the block with interactive=false, and
+    // closing the overlay could not refresh it, leaving every gesture permanently dead. Key on
+    // Unit and read through rememberUpdatedState so the handlers always see current values.
+    val currentInteractive by rememberUpdatedState(interactive)
+    val currentSettings by rememberUpdatedState(settings)
+    // advance() closes over items/order/pos, so the frozen block would otherwise keep calling
+    // the instance from the composition that started it — reshuffling against a stale photo set
+    // and resurrecting deleted items. Route through the latest instance instead.
+    val currentAdvance by rememberUpdatedState<(Int) -> Unit> { advance(it) }
+
     val gestures = Modifier
-        .pointerInput(items.size) {
+        .pointerInput(Unit) {
             detectTapGestures(
-                onLongPress = { if (interactive) overlay = Overlay.MENU },
+                onLongPress = { if (currentInteractive) overlay = Overlay.MENU },
                 // Tap left half = previous, right half = next. No on-screen controls.
                 onTap = { offset ->
-                    if (interactive) {
-                        if (settings.tapToDismiss) {
+                    if (currentInteractive) {
+                        if (currentSettings.tapToDismiss) {
                             (context as? android.app.Activity)?.finish()
                         } else {
-                            if (offset.x < size.width / 2f) advance(-1) else advance(1)
+                            if (offset.x < size.width / 2f) currentAdvance(-1) else currentAdvance(1)
                         }
                     }
                 },
             )
         }
-        .pointerInput(items.size) {
+        .pointerInput(Unit) {
             val threshold = 64.dp.toPx()
             var total = 0f
             detectHorizontalDragGestures(
@@ -418,7 +434,7 @@ private fun SlideshowScreen(
                 onHorizontalDrag = { _, amount -> total += amount },
                 // Swipe left (negative) = next, swipe right (positive) = previous.
                 onDragEnd = {
-                    if (interactive) { if (total <= -threshold) advance(1) else if (total >= threshold) advance(-1) }
+                    if (currentInteractive) { if (total <= -threshold) currentAdvance(1) else if (total >= threshold) currentAdvance(-1) }
                 },
             )
         }
@@ -1068,13 +1084,18 @@ private fun PhotoBackground(file: File, effect: SlideEffect, bgStyle: Background
                     if (result is SuccessResult) {
                         val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
                         if (bitmap != null) {
-                            val palette = Palette.from(bitmap).generate()
-                            // Fallback chain: Dark Muted -> Muted -> Dominant -> Black
-                            val colorInt = palette.getDarkMutedColor(
-                                palette.getMutedColor(
-                                    palette.getDominantColor(android.graphics.Color.BLACK)
+                            // Palette.generate() is the blocking variant and quantizes the whole
+                            // bitmap; LaunchedEffect runs on the main dispatcher, so it stutters
+                            // the slideshow on every photo change. Quantize off the main thread.
+                            val colorInt = withContext(Dispatchers.Default) {
+                                val palette = Palette.from(bitmap).generate()
+                                // Fallback chain: Dark Muted -> Muted -> Dominant -> Black
+                                palette.getDarkMutedColor(
+                                    palette.getMutedColor(
+                                        palette.getDominantColor(android.graphics.Color.BLACK)
+                                    )
                                 )
-                            )
+                            }
                             bgColor = Color(colorInt)
                         }
                     }
