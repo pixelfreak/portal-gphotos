@@ -615,7 +615,7 @@ private fun SlideshowInfo(
                 )
                 Spacer(Modifier.width(10.dp))
                 Text(
-                    "${weather.temp}°",
+                    "${weather.temp}°${weather.unit}",
                     color = Color.White,
                     fontSize = 40.sp,
                     fontWeight = FontWeight.Light,
