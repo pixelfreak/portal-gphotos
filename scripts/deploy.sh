@@ -1,25 +1,28 @@
 #!/usr/bin/env bash
 # Deploy portal-gphotos to a Meta Portal over adb in one shot:
-#   install the APK -> push the OAuth client (+ optional pre-minted token)
-#   -> grant the settings permissions -> register the screensaver -> launch.
+#   install the APK -> push the OAuth client (+ optional pre-minted token) -> launch.
 #
 # Idempotent: safe to re-run. Everything but the APK is optional, so this also
-# works as a "reconfigure permissions/screensaver" pass on an already-installed app.
+# works as a configuration pass on an already-installed app.
 #
 # Non-destructive: a debug<->release switch changes the signing key, which forces an
 # uninstall+install. We preserve the downloaded media + OAuth token across that by
 # stashing the app's files dir on /sdcard and moving it back after the fresh install.
 #
+# Also applies the device settings the frame expects: no Dream (screensaver) ever takes
+# over, the screen blanks after 5 minutes idle, and presence wakes it back into whatever
+# app was last in front. Pass --no-settings to install without touching device settings.
+#
 # Usage:
 #   scripts/deploy.sh [-s SERIAL] [--apk PATH] [--client client_secret.json]
-#                     [--token token.json] [--build]
+#                     [--token token.json] [--build] [--no-settings]
 #
 # Files default to ./client_secret.json and ./token.json if present (else skipped).
 # adb is found via $ADB, $ANDROID_HOME/platform-tools, or PATH.
 set -euo pipefail
 
 PKG="com.ramnat.portalgphotos"
-DREAM="$PKG/$PKG.PhotoDreamService"
+LEGACY_DREAM="$PKG/$PKG.PhotoDreamService"
 FILES_DIR="/sdcard/Android/data/$PKG/files"
 
 SERIAL="${SERIAL:-}"
@@ -37,8 +40,9 @@ fi
 CLIENT="${CLIENT:-client_secret.json}"
 TOKEN="${TOKEN:-token.json}"
 DO_BUILD=0
+SKIP_SETTINGS=0
 
-usage() { sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,21p' "$0" | sed 's/^# \{0,1\}//'; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -47,6 +51,7 @@ while [[ $# -gt 0 ]]; do
     --client)    CLIENT="$2"; shift 2;;
     --token)     TOKEN="$2"; shift 2;;
     --build)     DO_BUILD=1; shift;;
+    --no-settings) SKIP_SETTINGS=1; shift;;
     -h|--help)   usage; exit 0;;
     *) echo "unknown arg: $1" >&2; usage >&2; exit 1;;
   esac
@@ -126,17 +131,56 @@ if [[ -f "$CLIENT" ]]; then echo ">> push $CLIENT"; adb push "$CLIENT" "$FILES_D
 else echo ">> no $CLIENT found — pass --client PATH to push one, or use a build with baked-in creds"; fi
 if [[ -f "$TOKEN" ]]; then echo ">> push $TOKEN (pre-minted)"; adb push "$TOKEN" "$FILES_DIR/token.json" >/dev/null && echo "   ok"; fi
 
-# --- permissions (non-fatal: app degrades gracefully without them) ---
-echo ">> grant settings permissions"
-adb shell pm grant "$PKG" android.permission.WRITE_SECURE_SETTINGS && echo "   WRITE_SECURE_SETTINGS ok" \
-  || echo "   WRITE_SECURE_SETTINGS failed (screensaver re-assert disabled)"
-adb shell appops set "$PKG" WRITE_SETTINGS allow && echo "   WRITE_SETTINGS ok" \
-  || echo "   WRITE_SETTINGS failed (sleep-when-alone timeout change disabled)"
+# --- remove the retired automatic screensaver hook from older installs ---
+# Read first and change nothing unless the active component is exactly ours. The
+# replacement is Android's own recorded default, never a hard-coded Portal component.
+CURRENT_DREAM="$(adb shell settings get secure screensaver_components | tr -d '\r')"
+if [[ "$CURRENT_DREAM" == "$LEGACY_DREAM" ]]; then
+  DEFAULT_DREAM="$(adb shell settings get secure screensaver_default_component | tr -d '\r')"
+  if [[ -n "$DEFAULT_DREAM" && "$DEFAULT_DREAM" != "null" ]]; then
+    echo ">> clearing retired app Dream from screensaver_components"
+    adb shell settings put secure screensaver_components "$DEFAULT_DREAM"
+  else
+    echo ">> warning: legacy app Dream is active but no stock default is recorded; leaving component unchanged" >&2
+  fi
+fi
 
-# --- register our screensaver so an idle Portal drops into the frame ---
-echo ">> register screensaver"
-adb shell settings put secure screensaver_components "$DREAM"
-adb shell settings put secure screensaver_activate_on_sleep 1
+# --- idle/presence behavior ---
+# Target: presence wakes the display and restores whatever app was last in front;
+# 5 minutes without user activity blanks the screen; no Dream ever takes over, so
+# the frame is never replaced by Portal's own photo screensaver.
+#
+# Verified on a Portal Mini (omni_prod). Two caveats worth knowing before changing these:
+#
+#   * Portal's Display > Screen Off UI does not show screen_off_timeout. It renders
+#     (sleep_timeout - screen_off_timeout), so the two must be written as a pair or the
+#     menu reports a value that is neither. 600000-300000 is what makes it read "5 minutes".
+#   * The UI also writes a proprietary PosSettings store that adb cannot reach. These keys
+#     drive the framework correctly, but if the on-device menu and observed behavior ever
+#     disagree, re-pick the value in Portal's UI to resync all three writes.
+#
+# The device is mains-powered with no battery, so only the _charging variant matters;
+# _discharging is deliberately left alone.
+if [[ $SKIP_SETTINGS -eq 0 ]]; then
+  echo ">> applying idle/presence settings"
+  # No Dream on idle or dock. screensaver_enabled alone is not enough: the activate_on_*
+  # triggers still start a Dream with the master toggle off.
+  adb shell settings put secure screensaver_enabled 0
+  adb shell settings put secure screensaver_activate_on_sleep 0
+  adb shell settings put secure screensaver_activate_on_dock 0
+
+  # Blank after 5 min idle. sleep_timeout is the presence-aware timer; keep the pair in sync.
+  adb shell settings put system screen_off_timeout 300000
+  adb shell settings put secure sleep_timeout 600000
+  adb shell settings put secure sleep_timeout_charging 600000
+
+  # Motion/tap wake.
+  adb shell settings put secure wake_gesture_enabled 1
+  adb shell settings put secure double_tap_to_wake 1
+  echo "   ok (screen off after 5 min idle; presence wakes and restores the last app)"
+else
+  echo ">> skipping idle/presence settings (--no-settings)"
+fi
 
 # --- launch ---
 echo ">> launch"

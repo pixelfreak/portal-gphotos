@@ -137,7 +137,6 @@ fun AppRoot(
     onRemoveItems: (Set<String>) -> Unit,
     onStashState: () -> Unit,
     onRestoreState: () -> Unit,
-    gesturesEnabled: Boolean = true,
 ) {
     Surface(modifier = Modifier.fillMaxSize(), color = Color.Black) {
         when (state) {
@@ -172,7 +171,6 @@ fun AppRoot(
                 onRemoveItems = onRemoveItems,
                 onStashState = onStashState,
                 onRestoreState = onRestoreState,
-                gesturesEnabled = gesturesEnabled,
             )
             is UiState.Error -> ErrorScreen(state.message, onRetry)
         }
@@ -327,7 +325,6 @@ private fun SlideshowScreen(
     onRemoveItems: (Set<String>) -> Unit,
     onStashState: () -> Unit,
     onRestoreState: () -> Unit,
-    gesturesEnabled: Boolean,
 ) {
     if (items.isEmpty()) {
         CenterMessage("No photos to show")
@@ -397,9 +394,7 @@ private fun SlideshowScreen(
 
     val interactive = overlay == Overlay.NONE
 
-    // Only attach touch handlers in the interactive app. In screensaver (Dream) mode we
-    // must NOT consume touches, so they fall through and the Dream dismisses on touch.
-    val gestures = if (!gesturesEnabled) Modifier else Modifier
+    val gestures = Modifier
         .pointerInput(items.size) {
             detectTapGestures(
                 onLongPress = { if (interactive) overlay = Overlay.MENU },
@@ -779,7 +774,7 @@ private fun SettingsScreen(
 
             ToggleCard(
                 "Sleep when alone",
-                "Screen turns off when the room is empty. Note: Portal hardware requires brief blanking every 15 mins to check presence.",
+                "Allow Portal's own sleep and motion-wake behavior instead of keeping this app awake.",
                 settings.sleepWhenAlone,
                 onSetSleepWhenAlone,
             )

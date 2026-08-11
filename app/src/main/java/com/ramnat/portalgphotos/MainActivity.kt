@@ -14,24 +14,19 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.lifecycle.lifecycleScope
 import com.ramnat.portalgphotos.ui.AppRoot
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         debugLog("MainActivity") { "onCreate called" }
-        ScreensaverGuard.ensureScheduled(this)
         enterImmersive()
         setContent {
             val vm: MainViewModel = viewModel()
             val state by vm.state.collectAsStateWithLifecycle()
             val settings by vm.settingsState.collectAsStateWithLifecycle()
-            val powerPolicy by vm.powerPolicy.collectAsStateWithLifecycle()
-            LaunchedEffect(powerPolicy) {
-                applyPowerPolicyAndRecalculateTimer(powerPolicy)
+            LaunchedEffect(settings.sleepWhenAlone) {
+                applyScreenWakePolicy(settings.sleepWhenAlone)
             }
             val weather by vm.weatherState.collectAsStateWithLifecycle()
             val geoStatus by vm.geoStatus.collectAsStateWithLifecycle()
@@ -85,7 +80,7 @@ class MainActivity : ComponentActivity() {
     }
 
     // Immersive flags get cleared whenever the window loses focus (returning from the
-    // browser via singleTask, the Dream launching us, transient bars). Re-apply on every
+    // browser via singleTask or transient bars). Re-apply on every
     // focus gain, not just onCreate, or Portal's top bar reappears as a black strip.
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
@@ -106,44 +101,21 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         debugLog("MainActivity") { "onResume called" }
-        // Re-apply the user's preferred policy when the app is in the foreground.
-        // This ensures SLEEP_WHEN_ALONE disables the screensaver so we can doze gracefully,
-        // and also forces Android's PowerManager to recalculate the idle timer upon waking up.
         val sleepAlone = com.ramnat.portalgphotos.data.AppSettings(this).load().sleepWhenAlone
-        val policy = if (sleepAlone) PowerPolicy.SLEEP_WHEN_ALONE else PowerPolicy.AWAKE_FOREVER
-        applyPowerPolicyAndRecalculateTimer(policy)
+        applyScreenWakePolicy(sleepAlone)
     }
 
-    private fun applyPowerPolicyAndRecalculateTimer(policy: PowerPolicy) {
-        debugLog("MainActivity") { "applyPowerPolicyAndRecalculateTimer called with policy: $policy" }
-        if (policy == PowerPolicy.AWAKE_FOREVER) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            ScreensaverGuard.applyPowerPolicy(this, policy)
+    /**
+     * Controls only this Activity's keep-awake flag. The app deliberately does not register
+     * a Dream or write Portal's global screensaver/time-out settings; the stock Portal system
+     * remains responsible for idle sleep and any motion-based wake behavior.
+     */
+    private fun applyScreenWakePolicy(sleepWhenAlone: Boolean) {
+        debugLog("MainActivity") { "applyScreenWakePolicy(sleepWhenAlone=$sleepWhenAlone)" }
+        if (sleepWhenAlone) {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         } else {
-            // SLEEP_WHEN_ALONE
-            // 1. Grab the keep-screen-on flag temporarily to survive the Dream finishing
-            //    without the OS instantly turning the screen off.
             window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            
-            // 2. Apply the 15-minute timeout and disable the system screensaver.
-            ScreensaverGuard.applyPowerPolicy(this, policy)
-            
-            // 3. Wait for the transition to settle, then drop the flag.
-            //    This forces Android's PowerManager to recalculate the idle timer,
-            //    picking up our new 15-minute timeout for a fresh countdown!
-            lifecycleScope.launch {
-                delay(2000)
-                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            }
-        }
-    }
-
-    override fun onStop() {
-        super.onStop()
-        // Re-enable the screensaver when the app goes to the background.
-        // This ensures the Portal's launcher "Photos" button continues to work!
-        if (!isChangingConfigurations) {
-            ScreensaverGuard.applyPowerPolicy(this, PowerPolicy.AWAKE_FOREVER)
         }
     }
 }

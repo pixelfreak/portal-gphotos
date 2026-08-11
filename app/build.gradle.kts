@@ -97,8 +97,6 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    // Periodic guard that re-applies our screensaver after the launcher resets it
-    implementation("androidx.work:work-runtime-ktx:2.9.1")
 
     // Networking (no GMS): OkHttp + Android's built-in org.json
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

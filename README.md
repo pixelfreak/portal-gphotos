@@ -33,7 +33,7 @@ Because this app connects to your personal Google Photos library, you need to cr
 
 Connect your Facebook Portal to your computer via USB (or over Wi-Fi ADB). Make sure to authorize the connection on the Portal screen.
 
-Run the provided deployment script. This script automatically handles installing the APK, pushing your credentials, granting necessary system permissions, and setting up the screensaver hooks. Ensure you have downloaded the APK to your current directory, or explicitly specify its path using `--apk`:
+Run the provided deployment script. It installs the APK, pushes your credentials, and launches the app. The app is launched manually and does not replace Portal's stock screensaver. Ensure you have downloaded the APK to your current directory, or explicitly specify its path using `--apk`:
 
 ```bash
 ./scripts/deploy.sh --apk app-release.apk --client client_secret.json
@@ -47,12 +47,7 @@ Run the provided deployment script. This script automatically handles installing
 
 *(Note: If you have multiple devices connected, you can specify the target device with `-s <serial>` for Mac/Linux, or `-Serial <serial>` for Windows)*
 
-**No computer with adb?** Once you have your `client_secret.json` from step 2, you can do this whole deployment from your browser with [OpenPortal](https://andronedev.github.io/openportal/apps/com.ramnat.portalgphotos), a Chromium-based web app that drives the Portal over USB with WebUSB + ADB. There's nothing to install on your machine, just plug in the Portal:
-
-1. Click **Install** to download the release APK on the device and `pm install` it.
-2. Open **Set up screensaver**, upload your `client_secret.json`, and apply. OpenPortal pushes the credentials, grants the settings permissions, registers the `PhotoDreamService` screensaver, and launches the app, the same configuration `deploy.sh` performs.
-
-Then finish signing in on the Portal.
+The old OpenPortal **Set up screensaver** action should not be used with this manual-launch build because it registers the retired Dream service. Use the deployment script until OpenPortal offers a configuration-only action.
 
 ---
 
@@ -60,9 +55,9 @@ Then finish signing in on the Portal.
 - Long press on screen to bring up the menu.
 - Swipe left/right to navigate between photos.
 - Settings screen to control slideshow settings, weather, etc.
-- Swipe down from top to get the top bar when screensaver is active.
-- Tap to dismiss screensaver (configurable).
-- To keep adding photos easily, create a dedicated album in Google Photos and add the photos you want to use on your portal screensaver to that album. In the picker, search for the album name (it can take up to 24 hours after album creation to show up in picker search) and select all to add photos. As you keep adding more photos over time, simply keep selecting all and adding them - only the new photos will be downloaded.
+- Swipe down from top to get the top bar while the slideshow is open.
+- Tap to dismiss the slideshow (configurable).
+- To keep adding photos easily, create a dedicated album in Google Photos and add the photos you want to use on your Portal slideshow to that album. In the picker, search for the album name (it can take up to 24 hours after album creation to show up in picker search) and select all to add photos. As you keep adding more photos over time, simply keep selecting all and adding them - only the new photos will be downloaded.
 
 ---
 

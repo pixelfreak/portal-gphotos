@@ -4,7 +4,7 @@ Deploy portal-gphotos to a Meta Portal over adb in one shot.
 
 .DESCRIPTION
 Idempotent: safe to re-run. Everything but the APK is optional, so this also
-works as a "reconfigure permissions/screensaver" pass on an already-installed app.
+works as a configuration pass on an already-installed app.
 
 Non-destructive: a debug<->release switch changes the signing key, which forces an
 uninstall+install. We preserve the downloaded media + OAuth token across that by
@@ -36,7 +36,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 $PKG = "com.ramnat.portalgphotos"
-$DREAM = "$PKG/$PKG.PhotoDreamService"
+$LEGACY_DREAM = "$PKG/$PKG.PhotoDreamService"
 $FILES_DIR = "/sdcard/Android/data/$PKG/files"
 $FILES_PARENT = "/sdcard/Android/data/$PKG"
 $BAK = "/sdcard/portal-gphotos-deploy.bak"
@@ -160,18 +160,23 @@ if (Test-Path $Token) {
     Write-Host "   ok"
 }
 
-# --- permissions (non-fatal: app degrades gracefully without them) ---
-Write-Host ">> grant settings permissions"
-Invoke-Adb shell pm grant "$PKG" android.permission.WRITE_SECURE_SETTINGS | Out-Null
-if ($LASTEXITCODE -eq 0) { Write-Host "   WRITE_SECURE_SETTINGS ok" } else { Write-Host "   WRITE_SECURE_SETTINGS failed (screensaver re-assert disabled)" }
-
-Invoke-Adb shell appops set "$PKG" WRITE_SETTINGS allow | Out-Null
-if ($LASTEXITCODE -eq 0) { Write-Host "   WRITE_SETTINGS ok" } else { Write-Host "   WRITE_SETTINGS failed (sleep-when-alone timeout change disabled)" }
-
-# --- register our screensaver ---
-Write-Host ">> register screensaver"
-Invoke-Adb shell settings put secure screensaver_components "$DREAM" | Out-Null
-Invoke-Adb shell settings put secure screensaver_activate_on_sleep 1 | Out-Null
+# --- remove the retired automatic screensaver hook from older installs ---
+# Read first and change nothing unless the active component is exactly ours. The
+# replacement is Android's own recorded default, never a hard-coded Portal component.
+$currentDream = (Invoke-Adb shell settings get secure screensaver_components | Out-String).Trim()
+if ($currentDream -eq $LEGACY_DREAM) {
+    $defaultDream = (Invoke-Adb shell settings get secure screensaver_default_component | Out-String).Trim()
+    $screensaverEnabled = (Invoke-Adb shell settings get secure screensaver_enabled | Out-String).Trim()
+    if ($defaultDream -and $defaultDream -ne "null") {
+        Write-Host ">> restore stock screensaver (retiring legacy app Dream)"
+        Invoke-Adb shell settings put secure screensaver_components "$defaultDream" | Out-Null
+        if ($screensaverEnabled -ne "1") {
+            Invoke-Adb shell settings put secure screensaver_enabled 1 | Out-Null
+        }
+    } else {
+        Write-Warning "legacy app Dream is active but no stock default is recorded; leaving settings unchanged"
+    }
+}
 
 # --- launch ---
 Write-Host ">> launch"
