@@ -63,7 +63,10 @@ fi
 
 # --- pick the device ---
 if [[ -z "$SERIAL" ]]; then
-  mapfile -t DEVICES < <("$ADB" devices | awk 'NR>1 && $2=="device"{print $1}')
+  DEVICES=()
+  while IFS= read -r line; do
+    DEVICES+=("$line")
+  done < <("$ADB" devices | awk 'NR>1 && $2=="device"{print $1}')
   case ${#DEVICES[@]} in
     0) echo "no authorized adb devices — connect the Portal and enable ADB" >&2; exit 1;;
     1) SERIAL="${DEVICES[0]}";;
