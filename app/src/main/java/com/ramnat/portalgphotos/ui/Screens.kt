@@ -22,6 +22,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -290,6 +291,18 @@ private fun ErrorScreen(message: String, onRetry: () -> Unit) {
 private const val KEN_BURNS_MS = 9_000
 private const val KEN_BURNS_MAX_SCALE = 1.06f
 
+// Near-screen-shaped landscape media fills instead of letterboxing: the bars cost more than the
+// crop. Wide enough to catch 3:2 and 16:9, tight enough to leave panoramas alone. Tune by eye.
+private const val FILL_ASPECT_TOLERANCE = 0.20f
+
+// Portrait is never cropped — on a landscape screen it would lose most of its height.
+// Non-positive input means unknown dimensions, so fall back to fit.
+private fun shouldCropToFill(mediaAspect: Float, screenAspect: Float): Boolean {
+    if (mediaAspect <= 0f || screenAspect <= 0f) return false
+    if (mediaAspect < 1f) return false
+    return kotlin.math.abs(mediaAspect - screenAspect) / screenAspect <= FILL_ASPECT_TOLERANCE
+}
+
 /** Which overlay sits over the slideshow. The slideshow stays composed underneath so its
  *  playback position (and thus "keep current photo") survives opening a submenu. */
 private enum class Overlay { NONE, MENU, SETTINGS, MANAGE }
@@ -454,11 +467,11 @@ private fun SlideshowScreen(
                 // can suspend. On wake the player is built fresh, so its surface can't be stale/black.
                 key(screenOn) {
                     if (screenOn) {
-                        VideoPlayer(item.file, playing = interactive, muted = settings.muteVideos, onEnded = { advance(1) })
+                        VideoPlayer(item.file, playing = interactive, muted = settings.muteVideos, mediaAspect = item.aspectRatio, onEnded = { advance(1) })
                     }
                 }
             } else {
-                PhotoBackground(item.file, settings.effect, settings.backgroundStyle)
+                PhotoBackground(item.file, settings.effect, settings.backgroundStyle, item.aspectRatio)
             }
         }
         // The effect drives the transition between photos: hard cut, crossfade, or slide.
@@ -1052,7 +1065,7 @@ private fun ManageScreen(
 }
 
 @Composable
-private fun PhotoBackground(file: File, effect: SlideEffect, bgStyle: BackgroundStyle) {
+private fun PhotoBackground(file: File, effect: SlideEffect, bgStyle: BackgroundStyle, mediaAspect: Float) {
     Box(Modifier.fillMaxSize()) {
         when (bgStyle) {
             BackgroundStyle.BLACK -> {
@@ -1106,46 +1119,66 @@ private fun PhotoBackground(file: File, effect: SlideEffect, bgStyle: Background
         }
         
         // The sharp, fully-visible photo on top — animated (Ken Burns) or static per setting.
-        if (effect == SlideEffect.KEN_BURNS) KenBurnsImage(file) else StaticImage(file)
+        if (effect == SlideEffect.KEN_BURNS) KenBurnsImage(file, mediaAspect) else StaticImage(file, mediaAspect)
     }
 }
 
 @Composable
-private fun StaticImage(file: File) {
-    AsyncImage(
-        model = file,
-        contentDescription = null,
-        contentScale = ContentScale.Fit,
-        modifier = Modifier.fillMaxSize(),
-    )
+private fun StaticImage(file: File, mediaAspect: Float) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val screenAspect = if (constraints.maxHeight > 0) {
+            constraints.maxWidth.toFloat() / constraints.maxHeight.toFloat()
+        } else {
+            0f
+        }
+        AsyncImage(
+            model = file,
+            contentDescription = null,
+            contentScale = if (shouldCropToFill(mediaAspect, screenAspect)) {
+                ContentScale.Crop
+            } else {
+                ContentScale.Fit
+            },
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
 }
 
 @Composable
-private fun KenBurnsImage(file: File) {
-    // Fit the whole photo within the screen (letterbox/pillarbox on black for aspect
-    // ratios that don't match the Portal's ~1280x800). A gentle zoom keeps some life
-    // without cropping much of what we just fit.
+private fun KenBurnsImage(file: File, mediaAspect: Float) {
+    // A gentle zoom keeps some life without cropping much of what we just fit.
     val scale = remember(file) { Animatable(1f) }
     LaunchedEffect(file) {
         scale.animateTo(KEN_BURNS_MAX_SCALE, animationSpec = tween(KEN_BURNS_MS, easing = LinearEasing))
     }
-    AsyncImage(
-        model = file,
-        contentDescription = null,
-        contentScale = ContentScale.Fit,
-        modifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                scaleX = scale.value
-                scaleY = scale.value
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val screenAspect = if (constraints.maxHeight > 0) {
+            constraints.maxWidth.toFloat() / constraints.maxHeight.toFloat()
+        } else {
+            0f
+        }
+        AsyncImage(
+            model = file,
+            contentDescription = null,
+            contentScale = if (shouldCropToFill(mediaAspect, screenAspect)) {
+                ContentScale.Crop
+            } else {
+                ContentScale.Fit
             },
-    )
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale.value
+                    scaleY = scale.value
+                },
+        )
+    }
 }
 
 @Suppress("DEPRECATION")
 @OptIn(UnstableApi::class)
 @Composable
-private fun VideoPlayer(file: File, playing: Boolean, muted: Boolean, onEnded: () -> Unit) {
+private fun VideoPlayer(file: File, playing: Boolean, muted: Boolean, mediaAspect: Float, onEnded: () -> Unit) {
     debugLog("VideoPlayer") { "Composing VideoPlayer for file: ${file.name}, playing=$playing" }
     var isMuted by remember(muted) { mutableStateOf(muted) }
     val context = LocalContext.current
@@ -1194,17 +1227,31 @@ private fun VideoPlayer(file: File, playing: Boolean, muted: Boolean, onEnded: (
             player.release()
         }
     }
-    Box(Modifier.fillMaxSize()) {
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        // RESIZE_MODE_ZOOM is ExoPlayer's ContentScale.Crop.
+        val screenAspect = if (constraints.maxHeight > 0) {
+            constraints.maxWidth.toFloat() / constraints.maxHeight.toFloat()
+        } else {
+            0f
+        }
+        val videoResizeMode = remember(mediaAspect, screenAspect) {
+            if (shouldCropToFill(mediaAspect, screenAspect)) {
+                AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            } else {
+                AspectRatioFrameLayout.RESIZE_MODE_FIT
+            }
+        }
         AndroidView(
             factory = { ctx ->
                 PlayerView(ctx).apply {
                     this.player = player
                     useController = false
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    resizeMode = videoResizeMode
                 }
             },
             update = { view ->
                 view.player = player
+                view.resizeMode = videoResizeMode
             },
             modifier = Modifier.fillMaxSize(),
         )

@@ -25,4 +25,7 @@ data class CachedItem(
     val createTime: String = "",
 ) {
     val isVideo: Boolean get() = type == "VIDEO"
+
+    // 0 when the picker gave us no dimensions.
+    val aspectRatio: Float get() = if (width > 0 && height > 0) width.toFloat() / height else 0f
 }
