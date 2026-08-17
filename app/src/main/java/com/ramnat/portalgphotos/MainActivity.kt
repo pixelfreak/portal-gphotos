@@ -20,6 +20,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         debugLog("MainActivity") { "onCreate called" }
+        // Covers the case where the app is installed or updated after a boot, so BootReceiver
+        // never ran for this install.
+        ScreensaverGuard.applyNow(this)
+        ScreensaverGuard.ensureScheduled(this)
         enterImmersive()
         setContent {
             val vm: MainViewModel = viewModel()

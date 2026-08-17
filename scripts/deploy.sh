@@ -147,11 +147,16 @@ fi
 
 # --- idle/presence behavior ---
 # Target: presence wakes the display and restores whatever app was last in front;
-# 5 minutes without user activity blanks the screen; no Dream ever takes over, so
-# the frame is never replaced by Portal's own photo screensaver.
+# 5 minutes without user activity blanks the screen.
 #
-# Verified on a Portal Mini (omni_prod). Two caveats worth knowing before changing these:
+# Verified on a Portal Mini (omni_prod). Three caveats worth knowing before changing these:
 #
+#   * screensaver_enabled=0 and screensaver_activate_on_sleep=0 do NOT stop the launcher's
+#     own HomeDreamService — a Dream still starts on screen-off. What matters is
+#     screensaver_components: while it points at the launcher, waking lands on the Portal
+#     home screen instead of the app you left in front. The launcher repoints it at itself
+#     on every boot, so the app carries a guard (ScreensaverGuard) that steers it back.
+#     That guard needs a one-time adb grant, applied below.
 #   * Portal's Display > Screen Off UI does not show screen_off_timeout. It renders
 #     (sleep_timeout - screen_off_timeout), so the two must be written as a pair or the
 #     menu reports a value that is neither. 600000-300000 is what makes it read "5 minutes".
@@ -163,8 +168,6 @@ fi
 # _discharging is deliberately left alone.
 if [[ $SKIP_SETTINGS -eq 0 ]]; then
   echo ">> applying idle/presence settings"
-  # No Dream on idle or dock. screensaver_enabled alone is not enough: the activate_on_*
-  # triggers still start a Dream with the master toggle off.
   adb shell settings put secure screensaver_enabled 0
   adb shell settings put secure screensaver_activate_on_sleep 0
   adb shell settings put secure screensaver_activate_on_dock 0
@@ -177,6 +180,15 @@ if [[ $SKIP_SETTINGS -eq 0 ]]; then
   # Motion/tap wake.
   adb shell settings put secure wake_gesture_enabled 1
   adb shell settings put secure double_tap_to_wake 1
+
+  # Lets ScreensaverGuard repoint screensaver_components after each boot. Persists across
+  # reboots and in-place updates; only a full uninstall drops it.
+  if adb shell pm grant "$PKG" android.permission.WRITE_SECURE_SETTINGS 2>/dev/null; then
+    echo "   granted WRITE_SECURE_SETTINGS (screensaver guard active)"
+  else
+    echo "   warning: could not grant WRITE_SECURE_SETTINGS — the launcher's Dream will win" >&2
+    echo "   after each reboot and waking will land on the Portal home screen" >&2
+  fi
   echo "   ok (screen off after 5 min idle; presence wakes and restores the last app)"
 else
   echo ">> skipping idle/presence settings (--no-settings)"
