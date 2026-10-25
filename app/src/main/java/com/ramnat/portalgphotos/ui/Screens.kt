@@ -132,6 +132,7 @@ fun AppRoot(
     onSetShowClock: (Boolean) -> Unit,
     onSetShowPhotoDate: (Boolean) -> Unit,
     onSetShowWeather: (Boolean) -> Unit,
+    onSetFahrenheit: (Boolean) -> Unit,
     onSetBackgroundStyle: (com.ramnat.portalgphotos.data.BackgroundStyle) -> Unit,
     onSetSleepWhenAlone: (Boolean) -> Unit,
     onSetTapToDismiss: (Boolean) -> Unit,
@@ -166,6 +167,7 @@ fun AppRoot(
                 onSetShowClock = onSetShowClock,
                 onSetShowPhotoDate = onSetShowPhotoDate,
                 onSetShowWeather = onSetShowWeather,
+                onSetFahrenheit = onSetFahrenheit,
                 onSetBackgroundStyle = onSetBackgroundStyle,
                 onSetSleepWhenAlone = onSetSleepWhenAlone,
                 onSetTapToDismiss = onSetTapToDismiss,
@@ -332,6 +334,7 @@ private fun SlideshowScreen(
     onSetShowClock: (Boolean) -> Unit,
     onSetShowPhotoDate: (Boolean) -> Unit,
     onSetShowWeather: (Boolean) -> Unit,
+    onSetFahrenheit: (Boolean) -> Unit,
     onSetBackgroundStyle: (com.ramnat.portalgphotos.data.BackgroundStyle) -> Unit,
     onSetSleepWhenAlone: (Boolean) -> Unit,
     onSetTapToDismiss: (Boolean) -> Unit,
@@ -527,6 +530,7 @@ private fun SlideshowScreen(
                 onSetShowClock = onSetShowClock,
                 onSetShowPhotoDate = onSetShowPhotoDate,
                 onSetShowWeather = onSetShowWeather,
+                onSetFahrenheit = onSetFahrenheit,
                 onSetBackgroundStyle = onSetBackgroundStyle,
                 onSetSleepWhenAlone = onSetSleepWhenAlone,
                 onSetTapToDismiss = onSetTapToDismiss,
@@ -714,6 +718,7 @@ private fun SettingsScreen(
     onSetShowClock: (Boolean) -> Unit,
     onSetShowPhotoDate: (Boolean) -> Unit,
     onSetShowWeather: (Boolean) -> Unit,
+    onSetFahrenheit: (Boolean) -> Unit,
     onSetBackgroundStyle: (com.ramnat.portalgphotos.data.BackgroundStyle) -> Unit,
     onSetSleepWhenAlone: (Boolean) -> Unit,
     onSetTapToDismiss: (Boolean) -> Unit,
@@ -813,6 +818,7 @@ private fun SettingsScreen(
                 geoStatus = geoStatus,
                 geoResults = geoResults,
                 onSetShowWeather = onSetShowWeather,
+                onSetFahrenheit = onSetFahrenheit,
                 onSearchLocation = onSearchLocation,
                 onChooseLocation = onChooseLocation,
                 onDetectLocation = onDetectLocation,
@@ -851,13 +857,15 @@ private fun ToggleCard(title: String, subtitle: String, checked: Boolean, onChan
     }
 }
 
-/** Weather toggle plus, when on, the configured place, a city search, and the match list. */
+/** Weather toggle plus, when on, the °F/°C choice, the configured place, a city search, and
+ *  the match list. */
 @Composable
 private fun WeatherCard(
     settings: SettingsState,
     geoStatus: String?,
     geoResults: List<GeoPlace>,
     onSetShowWeather: (Boolean) -> Unit,
+    onSetFahrenheit: (Boolean) -> Unit,
     onSearchLocation: (String) -> Unit,
     onChooseLocation: (GeoPlace) -> Unit,
     onDetectLocation: () -> Unit,
@@ -871,6 +879,12 @@ private fun WeatherCard(
             Switch(checked = settings.showWeather, onCheckedChange = onSetShowWeather)
         }
         if (settings.showWeather) {
+            Spacer(Modifier.height(16.dp))
+            ChipRow(
+                options = listOf("Fahrenheit (°F)" to true, "Celsius (°C)" to false),
+                selected = settings.fahrenheit,
+                onSelect = onSetFahrenheit,
+            )
             Spacer(Modifier.height(16.dp))
             Text(
                 "Location: ${settings.weatherPlace ?: "not set"}",

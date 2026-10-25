@@ -61,6 +61,7 @@ class MainActivity : ComponentActivity() {
                 onSetShowClock = vm::setShowClock,
                 onSetShowPhotoDate = vm::setShowPhotoDate,
                 onSetShowWeather = vm::setShowWeather,
+                onSetFahrenheit = vm::setFahrenheit,
                 onSetBackgroundStyle = vm::setBackgroundStyle,
                 onSetSleepWhenAlone = vm::setSleepWhenAlone,
                 onSetTapToDismiss = vm::setTapToDismiss,

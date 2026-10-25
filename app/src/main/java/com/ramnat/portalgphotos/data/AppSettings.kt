@@ -22,6 +22,7 @@ data class SettingsState(
     val weatherLat: Double? = null,
     val weatherLon: Double? = null,
     val weatherPlace: String? = null,
+    val fahrenheit: Boolean = true,
     // When on, the frame stops holding the screen awake, handing the sleep-vs-show
     // decision back to Portal's presence policy: someone there keeps it lit, an empty
     // room lets it sleep. Off = a permanent always-on frame.
@@ -51,6 +52,7 @@ class AppSettings(context: Context) {
             weatherLat = lat,
             weatherLon = lon,
             weatherPlace = place,
+            fahrenheit = prefs.getBoolean(KEY_FAHRENHEIT, true),
             sleepWhenAlone = prefs.getBoolean(KEY_SLEEP_ALONE, false),
             backgroundStyle = runCatching {
                 BackgroundStyle.valueOf(prefs.getString(KEY_BG_STYLE, null) ?: BackgroundStyle.BLUR.name)
@@ -66,6 +68,7 @@ class AppSettings(context: Context) {
     fun setShowClock(v: Boolean) = prefs.edit().putBoolean(KEY_CLOCK, v).apply()
     fun setShowPhotoDate(v: Boolean) = prefs.edit().putBoolean(KEY_PHOTO_DATE, v).apply()
     fun setShowWeather(v: Boolean) = prefs.edit().putBoolean(KEY_WEATHER, v).apply()
+    fun setFahrenheit(v: Boolean) = prefs.edit().putBoolean(KEY_FAHRENHEIT, v).apply()
     fun setSleepWhenAlone(v: Boolean) = prefs.edit().putBoolean(KEY_SLEEP_ALONE, v).apply()
     fun setBackgroundStyle(v: BackgroundStyle) = prefs.edit().putString(KEY_BG_STYLE, v.name).apply()
     fun setTapToDismiss(v: Boolean) = prefs.edit().putBoolean(KEY_TAP_DISMISS, v).apply()
@@ -88,6 +91,7 @@ class AppSettings(context: Context) {
         const val KEY_LAT = "weather_lat"
         const val KEY_LON = "weather_lon"
         const val KEY_PLACE = "weather_place"
+        const val KEY_FAHRENHEIT = "weather_fahrenheit"
         const val KEY_BG_STYLE = "bg_style"
         const val KEY_TAP_DISMISS = "tap_to_dismiss"
     }

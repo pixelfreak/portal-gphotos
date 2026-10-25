@@ -26,7 +26,6 @@ import com.ramnat.portalgphotos.data.RefreshTokenInvalidException
 import com.ramnat.portalgphotos.data.GeoPlace
 import com.ramnat.portalgphotos.data.WeatherClient
 import com.ramnat.portalgphotos.data.WeatherNow
-import java.util.Locale
 import com.ramnat.portalgphotos.ui.qrBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -74,7 +73,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private val settings = AppSettings(app)
     private val weather = WeatherClient(http)
-    private val fahrenheit = Locale.getDefault().country == "US"
 
     private val _state = MutableStateFlow<UiState>(UiState.Loading)
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -121,6 +119,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (v) refreshWeather() else { _geoResults.value = emptyList(); _geoStatus.value = null }
     }
 
+    /** The overlay keeps the old reading (labeled with its own unit) until the refetch lands. */
+    fun setFahrenheit(v: Boolean) {
+        settings.setFahrenheit(v)
+        _settings.value = _settings.value.copy(fahrenheit = v)
+        refreshWeather()
+    }
+
     /** Geocode a typed place name into candidate matches. One match auto-selects; several
      *  populate [geoResults] for the user to disambiguate via [chooseLocation]. */
     fun searchLocation(query: String) {
@@ -157,7 +162,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (!s.showWeather || lat == null || lon == null) return
         viewModelScope.launch {
             val w = withContext(Dispatchers.IO) {
-                runCatching { weather.current(lat, lon, fahrenheit) }.getOrNull()
+                runCatching { weather.current(lat, lon, s.fahrenheit) }.getOrNull()
             }
             if (w != null) _weather.value = w
         }
